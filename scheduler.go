@@ -184,7 +184,7 @@ func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
 		}
 		// choose the weeks of the year to be applied
 		var weeks []bool
-		for j := 0; j < 52; j++ {
+		for j := 0; j < 53; j++ {
 			r := false
 			if rand.Int()%2 == 0 {
 				r = true
@@ -196,12 +196,14 @@ func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
 			RepeatDays:  days,
 			RepeatWeeks: weeks,
 		}
-		var err error
-		*e.index, err = s.InsertInOrder(e)
+		
+		index, err := s.InsertInOrder(e)
 		if err != nil {
 			fmt.Println(err)
 			break
 		}
+		e.index = new(int)
+		*e.index = index
 		if aux != nil {
 			aux(e)
 		}

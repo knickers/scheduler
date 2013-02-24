@@ -37,7 +37,7 @@ func (e *Event) UpdateNextTime() error {
 		}
 		week++
 		if week > 52 {
-			week -= 53
+			week = 0
 		}
 		day = 0
 	}
