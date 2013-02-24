@@ -45,7 +45,7 @@ func (s *Scheduler) Pop() (Event, error) {
 	return e, nil
 }
 
-func (s *Scheduler) Push(e Event) error {
+func (s *Scheduler) Push(e Event) (int, error) {
 	if e.index != nil && *e.index >= 0 && *e.index < len(s.events) {
 		s.events[*e.index] <- e
 	} else {
@@ -58,11 +58,15 @@ func (s *Scheduler) Push(e Event) error {
 	queue := <-s.queueLock
 	queue = append(queue, *e.index)
 	s.queueLock <- queue
-	return nil
+	return *e.index, nil
 }
 
-func (s *Scheduler) InsertInOrder(e Event) error {
-	s.Push(e)
+func (s *Scheduler) InsertInOrder(e Event) (int, error) {
+	index, err := s.Push(e)
+	if err != nil {
+		fmt.Println(err)
+		return -1, nil
+	}
 	queue := <-s.queueLock
 	for i := len(queue) - 2; i >= 0; i-- {
 		evnt := <-s.events[queue[i]]
@@ -70,14 +74,14 @@ func (s *Scheduler) InsertInOrder(e Event) error {
 		s.events[queue[i]] <- evnt
 		if e.NextTime.After(nextTime) {
 			s.queueLock <- queue
-			return nil
+			return index, nil
 		}
 		tmp := queue[i]
 		queue[i] = queue[i+1]
 		queue[i+1] = tmp
 	}
 	s.queueLock <- queue
-	return nil
+	return index, nil
 }
 
 func (s *Scheduler) GetNextTime() (t time.Time, err error) {
@@ -140,6 +144,8 @@ func (s *Scheduler) ManageEventQueue() {
 				fmt.Println(err)
 				break
 			}
+		} else {
+			msg.Logln("Event had no action")
 		}
 
 		// Update the next time for this event
@@ -150,7 +156,7 @@ func (s *Scheduler) ManageEventQueue() {
 		}
 
 		// Put this event back on the queue
-		err = s.InsertInOrder(event)
+		_, err = s.InsertInOrder(event)
 		if err != nil {
 			fmt.Println(err)
 			break
@@ -162,14 +168,8 @@ func (s *Scheduler) ManageEventQueue() {
 // seconds after starting the program, then they will have random days and weeks
 // in the future where they will fire again. These can be used for anything from
 // filling in a schedule as a template to testing the output system.
-func (s *Scheduler) GenerateRandomEvents(num int) {
+func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
 	for i := 0; i < num; i++ {
-		// up to eight pins per event
-		n := rand.Int()%8 + 1
-		var pins []int
-		for j := 0; j < n; j++ {
-			pins = append(pins, rand.Int()%8)
-		}
 		// up to num*2 seconds in the future
 		dur := time.Second * time.Duration(rand.Int()%(num*2)+1)
 		nextT := time.Now().Add(dur)
@@ -191,17 +191,26 @@ func (s *Scheduler) GenerateRandomEvents(num int) {
 			}
 			weeks = append(weeks, r)
 		}
-		s.InsertInOrder(Event{
+		e := Event{
 			NextTime:    nextT,
 			RepeatDays:  days,
 			RepeatWeeks: weeks,
-		})
+		}
+		var err error
+		*e.index, err = s.InsertInOrder(e)
+		if err != nil {
+			fmt.Println(err)
+			break
+		}
+		if aux != nil {
+			aux(e)
+		}
 	}
 }
 
 // Save the current in-memory schedule to file as a json encoded object
 // according to schema.json
-func (s *Scheduler) SaveSchedule(file string) error {
+func (s *Scheduler) SaveSchedule(file string, aux func(Event)) error {
 	var events []Event
 	for _, e := range s.events {
 		event := <-e
@@ -224,7 +233,7 @@ func (s *Scheduler) SaveSchedule(file string) error {
 
 // Load a schedule file into memory. file should be a json encoded file
 // according to schema.json
-func (s *Scheduler) LoadSchedule(file string) error {
+func (s *Scheduler) LoadSchedule(file string, aux func(Event)) error {
 	fp, err := ioutil.ReadFile(file)
 	if err != nil {
 		fmt.Println("ReadFile:", err)
@@ -239,10 +248,13 @@ func (s *Scheduler) LoadSchedule(file string) error {
 	}
 	// Put all the events in
 	for _, e := range events {
-		err = s.InsertInOrder(e)
+		*e.index, err = s.InsertInOrder(e)
 		if err != nil {
 			fmt.Println("Insert:", err)
 			return err
+		}
+		if aux != nil {
+			aux(e)
 		}
 	}
 	return nil

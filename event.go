@@ -27,9 +27,7 @@ func (e *Event) UpdateNextTime() error {
 			// Add one more day to the wait time
 			e.NextTime = e.NextTime.AddDate(0, 0, 1)
 			// We're done if nextTime is after today and today is enabled
-			if e.NextTime.After(now) &&
-				e.RepeatWeeks[week] &&
-				e.RepeatDays[day] {
+			if e.NextTime.After(now) && e.RepeatWeeks[week] && e.RepeatDays[day] {
 				return nil
 			}
 		}
@@ -47,13 +45,15 @@ func (e *Event) UpdateNextTime() error {
 	return errors.New("There were no enabled days for this event")
 }
 
-func (e *Event) Update(
-	nextTime time.Time,
-	repeatDays, repeatWeeks []bool) error {
+func (e *Event) Update(nextTime time.Time, repeatDays, repeatWeeks []bool) error {
 	e.NextTime = nextTime
 	e.RepeatDays = repeatDays
 	e.RepeatWeeks = repeatWeeks
 	return nil
+}
+
+func (e *Event) Id() int {
+	return *e.index
 }
 
 func NewEvent(t time.Time) *Event {
