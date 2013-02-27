@@ -56,6 +56,10 @@ func (e *Event) Id() int {
 	return *e.index
 }
 
+func (e *Event) String() string {
+	return e.NextTime.Format(Stamp)
+}
+
 func NewEvent(t time.Time) *Event {
 	e := new(Event)
 	e.NextTime = t

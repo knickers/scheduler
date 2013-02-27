@@ -11,8 +11,11 @@ import (
 	"time"
 )
 
+var (
+	Stamp string // string formatting for printing time
+)
+
 type Scheduler struct {
-	Stamp       string // string formatting for printing time
 	events      []chan Event
 	queueLock   chan []int // index into events list, sorted by next event time
 	nextEvent   chan Event
@@ -20,8 +23,9 @@ type Scheduler struct {
 }
 
 func New() *Scheduler {
+	Stamp = "Jan 2 2006 at 3:04:05PM"
+
 	s := new(Scheduler)
-	s.Stamp = "Jan 2 2006 at 3:04:05PM"
 	s.nextEvent = make(chan Event)
 	s.queueLock = make(chan []int, 1)
 	s.queueLock <- []int{}
@@ -108,7 +112,7 @@ func (s *Scheduler) feedNextEvent() {
 			continue
 		}
 
-		msg.Logf(" feeder) Next event on %v\n", nextTime.Format(s.Stamp))
+		msg.Logf(" feeder) Next event on %v\n", nextTime.Format(Stamp))
 		timer := time.AfterFunc(nextTime.Sub(time.Now()), func() {
 			e, err := s.Pop()
 			if err == nil {
