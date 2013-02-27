@@ -43,7 +43,7 @@ func (s *Scheduler) Pop() (Event, error) {
 	if len(queue) > 1 {
 		queue = queue[1:]
 	} else {
-		queue = []int{}
+		queue = nil
 	}
 	s.queueLock <- queue
 	return e, nil
@@ -172,11 +172,12 @@ func (s *Scheduler) ManageEventQueue() {
 // seconds after starting the program, then they will have random days and weeks
 // in the future where they will fire again. These can be used for anything from
 // filling in a schedule as a template to testing the output system.
-func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
+func (s *Scheduler) GenerateRandomEvents(num int, aux func(*Event)) {
 	for i := 0; i < num; i++ {
 		// up to num*2 seconds in the future
 		dur := time.Second * time.Duration(rand.Int()%(num*2)+1)
 		nextT := time.Now().Add(dur)
+
 		// choose the days of the week to be applied
 		var days []bool
 		for j := 0; j < 7; j++ {
@@ -186,6 +187,7 @@ func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
 			}
 			days = append(days, r)
 		}
+
 		// choose the weeks of the year to be applied
 		var weeks []bool
 		for j := 0; j < 53; j++ {
@@ -200,27 +202,37 @@ func (s *Scheduler) GenerateRandomEvents(num int, aux func(Event)) {
 			RepeatDays:  days,
 			RepeatWeeks: weeks,
 		}
-		
+
 		index, err := s.InsertInOrder(e)
 		if err != nil {
 			fmt.Println(err)
 			break
 		}
-		e.index = new(int)
-		*e.index = index
+
 		if aux != nil {
-			aux(e)
+			e := <-s.events[index]
+			aux(&e)
+			s.events[index] <- e
 		}
 	}
 }
 
+type auxData struct {
+	Event Event
+	Data  interface{}
+}
+
 // Save the current in-memory schedule to file as a json encoded object
 // according to schema.json
-func (s *Scheduler) SaveSchedule(file string, aux func(Event)) error {
-	var events []Event
+func (s *Scheduler) SaveSchedule(file string, aux func(Event) interface{}) error {
+	var events []auxData
 	for _, e := range s.events {
 		event := <-e
-		events = append(events, event)
+		var data interface{}
+		if aux != nil {
+			data = aux(event)
+		}
+		events = append(events, auxData{event, data})
 		e <- event
 	}
 	//bytes, err := json.Marshal(events)
@@ -239,14 +251,14 @@ func (s *Scheduler) SaveSchedule(file string, aux func(Event)) error {
 
 // Load a schedule file into memory. file should be a json encoded file
 // according to schema.json
-func (s *Scheduler) LoadSchedule(file string, aux func(Event)) error {
+func (s *Scheduler) LoadSchedule(file string, aux func(*Event, interface{})) error {
 	fp, err := ioutil.ReadFile(file)
 	if err != nil {
 		fmt.Println("ReadFile:", err)
 		return err
 	}
 	//log("%s\n", string(fp))
-	var events []Event
+	var events []auxData
 	err = json.Unmarshal(fp, &events)
 	if err != nil {
 		fmt.Println("Unmarshal:", err)
@@ -254,13 +266,13 @@ func (s *Scheduler) LoadSchedule(file string, aux func(Event)) error {
 	}
 	// Put all the events in
 	for _, e := range events {
-		*e.index, err = s.InsertInOrder(e)
+		*e.Event.index, err = s.InsertInOrder(e.Event)
 		if err != nil {
 			fmt.Println("Insert:", err)
 			return err
 		}
 		if aux != nil {
-			aux(e)
+			aux(&e.Event, e.Data)
 		}
 	}
 	return nil
